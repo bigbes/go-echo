@@ -3,30 +3,30 @@ package main
 import (
 	"context"
 	"io"
-	"net/http"
 	"os"
 
 	"github.com/insolar/vanilla/throw"
 	"github.com/soverenio/instrumentation/server"
 
 	"github.com/bigbes/go-echo/metrics"
+	http "github.com/valyala/fasthttp"
 )
 
-func echoHandle(rw http.ResponseWriter, r *http.Request) {
+func echoHandle(ctx *http.RequestCtx) {
 	metrics.CallCount.Inc()
 
-	if ct := r.Header.Get("Content-Type"); ct != "" {
-		rw.Header().Set("Content-Type", ct)
-	}
+	// process body
+	contentLength := ctx.Request.Header.ContentLength()
+	if contentLength > 0 {
+		if ct := ctx.Request.Header.ContentType(); len(ct) > 0 {
+			ctx.SetContentTypeBytes(ct)
+		}
 
-	bytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		_ = ctx.Request.BodyWriteTo(ctx.Response.BodyWriter())
+	} else if contentLength == -1 {
+		ctx.Error("unsupported", http.StatusUnsupportedMediaType)
 		return
 	}
-
-	rw.Write(bytes)
-	rw.Write([]byte("\n"))
 }
 
 var (
@@ -59,9 +59,8 @@ func main() {
 	s := initializeMetrics(ctx, getVariable("INSTRUMENTATION_PORT", ":9090"))
 	defer func() { _ = s.Stop(ctx) }()
 
-	http.HandleFunc("/", echoHandle)
-	err := http.ListenAndServe(getVariable("ECHO_PORT", ":9000"), nil)
-	if err != http.ErrServerClosed {
+	err := http.ListenAndServe(getVariable("ECHO_PORT", ":9000"), echoHandle)
+	if err != io.EOF {
 		panic(throw.W(err, "failed to start server"))
 	}
 }
