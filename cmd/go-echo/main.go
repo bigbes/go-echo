@@ -19,16 +19,14 @@ func echoHandle(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", ct)
 	}
 
-	// process body
-	if r.ContentLength > 0 {
-		_, _ = io.CopyN(rw, r.Body, r.ContentLength)
-	} else if r.ContentLength == -1 || r.Body != nil {
-		_, _ = io.Copy(rw, r.Body)
+	bytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	if r.Body != nil {
-		_ = r.Body.Close()
-	}
+	rw.Write(bytes)
+	rw.Write([]byte("\n"))
 }
 
 var (

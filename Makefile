@@ -1,5 +1,5 @@
 build:
-	go build -o .artifacts/echo $(realpath ./cmd/echo)/*.go
+	go build -o .artifacts/echo $(realpath ./cmd/go-echo)/*.go
 
 image:
 	docker build -t bigbes/go-echo .
