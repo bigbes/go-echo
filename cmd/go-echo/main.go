@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/insolar/vanilla/throw"
 	"github.com/soverenio/instrumentation/server"
@@ -15,6 +16,11 @@ import (
 func echoHandle(ctx *http.RequestCtx) {
 	metrics.CallCount.Inc()
 
+	if len(ctx.Request.Header.Referer()) > 0 {
+		ctx.SetStatusCode(http.StatusOK)
+		return
+	}
+
 	// process body
 	contentLength := ctx.Request.Header.ContentLength()
 	if contentLength > 0 {
@@ -22,6 +28,7 @@ func echoHandle(ctx *http.RequestCtx) {
 			ctx.SetContentTypeBytes(ct)
 		}
 
+		ctx.SetStatusCode(http.StatusOK)
 		_ = ctx.Request.BodyWriteTo(ctx.Response.BodyWriter())
 	} else if contentLength == -1 {
 		ctx.Error("unsupported", http.StatusUnsupportedMediaType)
@@ -30,14 +37,35 @@ func echoHandle(ctx *http.RequestCtx) {
 }
 
 var (
-	configurationPrefix = "GO_ECHO_"
+	configurationPrefix = "SVRN_ECHO_"
+
+	configurationAvailableOptions = map[string]struct{}{
+		"INSTRUMENTATION_SERVER": struct{}{},
+		"SERVER":                 struct{}{},
+	}
 )
 
-func getVariable(suffix string, defaultValue string) string {
+func variableGet(suffix string, defaultValue string) string {
 	if value, ok := os.LookupEnv(configurationPrefix + suffix); ok {
 		return value
 	}
 	return defaultValue
+}
+
+func variablesCheck() {
+	for _, envVar := range os.Environ() {
+		key, _, ok := strings.Cut(envVar, "=")
+		switch {
+		case !ok:
+			continue
+		case !strings.HasPrefix(key, configurationPrefix):
+			continue
+		}
+
+		if _, ok := configurationAvailableOptions[key[len(configurationPrefix):]]; !ok {
+			panic("illegal environment variable " + key)
+		}
+	}
 }
 
 func initializeMetrics(ctx context.Context, port string) server.DefaultServer {
@@ -55,11 +83,12 @@ func initializeMetrics(ctx context.Context, port string) server.DefaultServer {
 
 func main() {
 	ctx := context.Background()
+	variablesCheck()
 
-	s := initializeMetrics(ctx, getVariable("INSTRUMENTATION_PORT", ":9090"))
+	s := initializeMetrics(ctx, variableGet("INSTRUMENTATION_SERVER", ":9090"))
 	defer func() { _ = s.Stop(ctx) }()
 
-	err := http.ListenAndServe(getVariable("ECHO_PORT", ":9000"), echoHandle)
+	err := http.ListenAndServe(variableGet("SERVER", ":9000"), echoHandle)
 	if err != io.EOF {
 		panic(throw.W(err, "failed to start server"))
 	}
