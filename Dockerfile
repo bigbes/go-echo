@@ -1,4 +1,4 @@
-FROM golang:1.18-alpine
+FROM golang:1.22-alpine
 
 # copy source code into the $GOPATH and switch to that directory
 COPY  . ${GOPATH}/src/github.com/bigbes/go-echo
