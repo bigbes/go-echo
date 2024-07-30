@@ -18,6 +18,9 @@ import (
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"google.golang.org/grpc"
+	pb "google.golang.org/grpc/examples/helloworld/helloworld"
+	"google.golang.org/grpc/reflection"
 
 	"github.com/bigbes/go-echo/metrics"
 )
@@ -29,6 +32,7 @@ var (
 		"INSTRUMENTATION_SERVER": {},
 		"SERVER":                 {},
 		"SERVER_H2C":             {},
+		"SERVER_GRPC":            {},
 	}
 )
 
@@ -42,7 +46,9 @@ func main() {
 	errChan := make(chan error)
 	httpSrv := serveHTTP(errChan)
 	http2Srv := serveH2C(errChan)
-	servers := []Shutdowner{httpSrv, http2Srv}
+	grpcSrv := serveGRPC(errChan)
+
+	servers := []Shutdowner{httpSrv, http2Srv, grpcSrv}
 
 	// SIGINT/SIGTERM handling
 	osSignals := make(chan os.Signal, 1)
@@ -103,6 +109,28 @@ func serveH2C(resChan chan error) Shutdowner {
 	}()
 
 	return &HttpServerWithShutdown{srv: srv}
+}
+
+func serveGRPC(resChan chan error) Shutdowner {
+	addr := variableGet("SERVER_GRPC", ":10050")
+	log.Println("Starting GRPC server on", addr)
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		panic(throw.W(err, "failed to listen "+addr))
+	}
+
+	grpcSrv := grpc.NewServer()
+	pb.RegisterGreeterServer(grpcSrv, &grpcServer{})
+
+	// Register reflection service on gRPC server.
+	reflection.Register(grpcSrv)
+
+	go func() {
+		resChan <- grpcSrv.Serve(lis)
+	}()
+
+	return &GRPCServerWithShutdown{srv: grpcSrv}
 }
 
 func httpHandler(ctx *fasthttp.RequestCtx) {
@@ -234,4 +262,26 @@ func (s *HttpServerWithShutdown) Shutdown() error {
 	defer cancel()
 
 	return s.srv.Shutdown(ctx)
+}
+
+// grpcServer is used to implement helloworld.GreeterServer.
+type grpcServer struct {
+	pb.UnimplementedGreeterServer
+}
+
+// SayHello implements helloworld.GreeterServer
+func (s *grpcServer) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+	log.Printf("Received: %v\n", in.GetName())
+	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
+}
+
+type GRPCServerWithShutdown struct {
+	srv *grpc.Server
+}
+
+// Shutdown gracefully stops the server.
+// Implements Shutdowner interface.
+func (s *GRPCServerWithShutdown) Shutdown() error {
+	s.srv.GracefulStop()
+	return nil
 }
