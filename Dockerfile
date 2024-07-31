@@ -10,4 +10,5 @@ RUN go install -mod=vendor ./cmd/go-echo/main.go && cp ${GOPATH}/bin/main /bin/g
 # the default command runs the service in the foreground
 CMD ["/bin/go-echo"]
 EXPOSE 9000
-EXPOSE 9090
+EXPOSE 9001
+EXPOSE 10050
