@@ -1,0 +1,14 @@
+services:
+  go-echo:
+    image: ghcr.io/soverenio/tools/go-echo
+    environment:
+      SVRN_ECHO_INSTRUMENTATION_SERVER: ":${INSTRUMENTATION_PORT}"
+      SVRN_ECHO_SERVER: ":${HTTP_PORT}"
+      SVRN_ECHO_SERVER_H2C: ":${HTTP2_PORT}"
+      SVRN_ECHO_SERVER_GRPC: ":${GRPC_PORT}"
+
+    ports:
+      - "${INSTRUMENTATION_PORT}:${INSTRUMENTATION_PORT}"
+      - "${HTTP_PORT}:${HTTP_PORT}"
+      - "${HTTP2_PORT}:${HTTP2_PORT}"
+      - "${GRPC_PORT}:${GRPC_PORT}"
